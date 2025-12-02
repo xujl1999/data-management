@@ -150,6 +150,7 @@
       <header>
         <h1>Key-Data-Management</h1>
         <p>自动读取并展示视频列表，数据来自 video_ls.csv，直接在浏览器中打开即可筛选。</p>
+        <p style="font-size: 0.85rem; color: #71717a; margin-top: 4px;" id="update-time"></p>
         <div class="status" id="status">正在加载数据...</div>
         <div class="filters">
           <div class="filter-field">
@@ -173,6 +174,7 @@
     </main>
     <script>
       const statusEl = document.getElementById("status");
+      const updateTimeEl = document.getElementById("update-time");
       const headRow = document.getElementById("table-head");
       const bodyEl = document.getElementById("table-body");
       const categoryGroup = document.getElementById("category-group");
@@ -363,21 +365,77 @@
         applyFilters();
       });
 
+      const formatUpdateTime = (dateString) => {
+        if (!dateString) return "";
+        try {
+          const date = new Date(dateString);
+          const now = new Date();
+          const diffMs = now - date;
+          const diffMins = Math.floor(diffMs / 60000);
+          const diffHours = Math.floor(diffMs / 3600000);
+          const diffDays = Math.floor(diffMs / 86400000);
+          
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, "0");
+          const day = String(date.getDate()).padStart(2, "0");
+          const hours = String(date.getHours()).padStart(2, "0");
+          const minutes = String(date.getMinutes()).padStart(2, "0");
+          
+          let relativeTime = "";
+          if (diffMins < 1) {
+            relativeTime = "刚刚更新";
+          } else if (diffMins < 60) {
+            relativeTime = `${diffMins} 分钟前更新`;
+          } else if (diffHours < 24) {
+            relativeTime = `${diffHours} 小时前更新`;
+          } else if (diffDays < 7) {
+            relativeTime = `${diffDays} 天前更新`;
+          } else {
+            relativeTime = `${year}-${month}-${day} ${hours}:${minutes} 更新`;
+          }
+          
+          return `数据更新时间：${relativeTime}（${year}-${month}-${day} ${hours}:${minutes}）`;
+        } catch (e) {
+          return "";
+        }
+      };
+
       const loadCSV = async () => {
         statusEl.textContent = "正在加载数据...";
+        updateTimeEl.textContent = "";
         try {
           // 优先尝试从 GitHub raw 加载，如果失败则尝试本地路径
           const githubUrl = "https://raw.githubusercontent.com/xujl1999/data-management/master/video_ls.csv";
           const localUrl = "video_ls.csv";
           
           let response;
+          let usedUrl = "";
           try {
             response = await fetch(githubUrl, { cache: "no-cache" });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            usedUrl = githubUrl;
           } catch (e) {
             // 如果 GitHub 加载失败，尝试本地路径
             response = await fetch(localUrl, { cache: "no-cache" });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            usedUrl = localUrl;
+          }
+          
+          // 获取更新时间
+          const lastModified = response.headers.get("Last-Modified");
+          if (lastModified) {
+            updateTimeEl.textContent = formatUpdateTime(lastModified);
+          } else {
+            // 如果无法获取Last-Modified，尝试使用HEAD请求获取
+            try {
+              const headResponse = await fetch(usedUrl, { method: "HEAD", cache: "no-cache" });
+              const headLastModified = headResponse.headers.get("Last-Modified");
+              if (headLastModified) {
+                updateTimeEl.textContent = formatUpdateTime(headLastModified);
+              }
+            } catch (e) {
+              // 忽略HEAD请求失败
+            }
           }
           
           const text = await response.text();
