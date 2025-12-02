@@ -149,7 +149,7 @@
     <main>
       <header>
         <h1>Key-Data-Management</h1>
-        <p>自动读取并展示视频列表，数据来自 video_ls.csv，直接在浏览器中打开即可筛选11。<span id="update-time" style="margin-left: 8px; font-size: 0.9rem; color: #2563eb;"></span></p>
+        <p>自动读取并展示视频列表，数据来自 video_ls.csv，更新时间：<span id="update-time" style="margin-left: 8px; font-size: 0.9rem; color: #52525b;"></span>。</p>
         <div class="status" id="status">正在加载数据...</div>
         <div class="filters">
           <div class="filter-field">
@@ -364,39 +364,13 @@
         applyFilters();
       });
 
-      const formatUpdateTime = (dateString) => {
-        if (!dateString) return "";
-        try {
-          const date = new Date(dateString);
-          const now = new Date();
-          const diffMs = now - date;
-          const diffMins = Math.floor(diffMs / 60000);
-          const diffHours = Math.floor(diffMs / 3600000);
-          const diffDays = Math.floor(diffMs / 86400000);
-          
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, "0");
-          const day = String(date.getDate()).padStart(2, "0");
-          const hours = String(date.getHours()).padStart(2, "0");
-          const minutes = String(date.getMinutes()).padStart(2, "0");
-          
-          let relativeTime = "";
-          if (diffMins < 1) {
-            relativeTime = "刚刚更新";
-          } else if (diffMins < 60) {
-            relativeTime = `${diffMins} 分钟前更新`;
-          } else if (diffHours < 24) {
-            relativeTime = `${diffHours} 小时前更新`;
-          } else if (diffDays < 7) {
-            relativeTime = `${diffDays} 天前更新`;
-          } else {
-            relativeTime = `${year}-${month}-${day} ${hours}:${minutes} 更新`;
-          }
-          
-          return `更新时间：${relativeTime}`;
-        } catch (e) {
-          return "";
-        }
+      const formatUpdateTime = (date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        const hours = String(date.getHours()).padStart(2, "0");
+        const minutes = String(date.getMinutes()).padStart(2, "0");
+        return ` ${year}-${month}-${day} ${hours}:${minutes}`;
       };
 
       const loadCSV = async () => {
@@ -420,24 +394,15 @@
             usedUrl = localUrl;
           }
           
+          const text = await response.text();
+          
           // 获取更新时间
+          let updateDate = new Date();
           const lastModified = response.headers.get("Last-Modified");
           if (lastModified) {
-            updateTimeEl.textContent = formatUpdateTime(lastModified);
-          } else {
-            // 如果无法获取Last-Modified，尝试使用HEAD请求获取
-            try {
-              const headResponse = await fetch(usedUrl, { method: "HEAD", cache: "no-cache" });
-              const headLastModified = headResponse.headers.get("Last-Modified");
-              if (headLastModified) {
-                updateTimeEl.textContent = formatUpdateTime(headLastModified);
-              }
-            } catch (e) {
-              // 忽略HEAD请求失败
-            }
+            updateDate = new Date(lastModified);
           }
-          
-          const text = await response.text();
+          updateTimeEl.textContent = formatUpdateTime(updateDate);
           const rows = parseCSV(text);
           if (!rows.length) {
             statusEl.textContent = "CSV 文件为空";
