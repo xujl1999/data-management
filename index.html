@@ -149,7 +149,7 @@
     <main>
       <header>
         <h1>mini-bilibili</h1>
-        <p>自动读取并展示 B 站视频列表，数据来自 video_ls.csv，直接在浏览器中打开即可筛选。</p>
+        <p>自动读取并展示视频列表，数据来自 video_ls.csv，直接在浏览器中打开即可筛选。</p>
         <div class="status" id="status">正在加载数据...</div>
         <div class="filters">
           <div class="filter-field">
@@ -367,8 +367,8 @@
         statusEl.textContent = "正在加载数据...";
         try {
           // 优先尝试从 GitHub raw 加载，如果失败则尝试本地路径
-          const githubUrl = "https://raw.githubusercontent.com/xujl1999/data-management/main/video_ls.csv";
-          const localUrl = "../video_ls.csv";
+          const githubUrl = "https://raw.githubusercontent.com/xujl1999/data-management/master/video_ls.csv";
+          const localUrl = "video_ls.csv";
           
           let response;
           try {
