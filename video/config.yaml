@@ -1,0 +1,12 @@
+{
+  "authors_file": "bilibili_authors.json",
+  "headless": true,
+  "edge_options": ["--edge-skip-compat-layer-relaunch"],
+  "sleep_after_load_seconds": [5.5, 10.5],
+  "scroll_steps": { "min": 1, "max": 3 },
+  "max_videos_per_author": 10,
+  "outputs": [
+    "video_ls.csv",
+    "../web/video_ls.csv"
+  ]
+}

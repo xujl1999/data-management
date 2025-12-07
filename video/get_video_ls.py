@@ -1,101 +1,152 @@
 from pathlib import Path
-
-BASE_DIR = Path(__file__).resolve().parent  # 当前py文件所在目录
-
-
-from selenium import webdriver
-from selenium.webdriver.edge.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import pandas as pd
-from tqdm import tqdm
 import json
-import time
 import random
+import time
+from typing import Dict, List
 
-COOKIE_FILE = "bili_cookies.json"
+import pandas as pd
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.edge.options import Options
+from tqdm import tqdm
 
-
-with open(COOKIE_FILE, "r", encoding="utf-8") as f:
-    cookies = json.load(f)
-
-
-options = Options()
-options.add_argument("--edge-skip-compat-layer-relaunch")
-driver = webdriver.Edge(options=options)
-
-driver.get("https://www.bilibili.com")
-
-for c in cookies:
-    dom = c.get("domain", "")
-    # 只处理和 bilibili 有关的 cookie
-    if "bilibili.com" not in dom:
-        continue
-
-    cookie = {
-        "name": c["name"],
-        "value": c["value"],
-        "domain": ".bilibili.com",
-        "path": "/",
-    }
-
-    driver.add_cookie(cookie)
-
-driver.refresh()  # 刷新后看是否已经是登录态
-
-# time.sleep(2)
-time.sleep(random.uniform(1.5, 3.5))
-# 存查到的信息
-rows = []
+try:
+    import yaml  # type: ignore
+except ImportError:
+    yaml = None
 
 
-def human_scroll(driver, min_scrolls=1, max_scrolls=3):
+BASE_DIR = Path(__file__).resolve().parent
+CONFIG_PATH = BASE_DIR / "config.yaml"
+
+
+def load_config() -> Dict:
+    raw = CONFIG_PATH.read_text(encoding="utf-8")
+    if yaml:
+        return yaml.safe_load(raw)
+    return json.loads(raw)
+
+
+def random_between(span: List[float]) -> float:
+    return random.uniform(span[0], span[1])
+
+
+def human_scroll(driver: webdriver.Edge, min_scrolls: int, max_scrolls: int) -> None:
     steps = random.randint(min_scrolls, max_scrolls)
     for _ in range(steps):
         scroll_px = random.randint(300, 1200)
-        driver.execute_script("window.scrollBy({ top: arguments[0], behavior: 'smooth' });", scroll_px)
-        time.sleep(random.uniform(0.8, 1.6))
+        driver.execute_script(
+            "window.scrollBy({ top: arguments[0], behavior: 'smooth' });", scroll_px
+        )
+        time.sleep(random_between([0.8, 1.6]))
     driver.execute_script("window.scrollTo(0, 0);")
-    time.sleep(random.uniform(0.5, 1.0))
+    time.sleep(random_between([0.5, 1.0]))
 
 
-with open("bilibili_authors.json", "r", encoding="utf-8") as f:
-    author_config = json.load(f)
+def build_driver(edge_options: List[str], headless: bool) -> webdriver.Edge:
+    options = Options()
+    for opt in edge_options:
+        options.add_argument(opt)
+    if headless:
+        # 使用新版 headless 以减少兼容性问题
+        options.add_argument("--headless=new")
+    driver = webdriver.Edge(options=options)
+    driver.get("https://www.bilibili.com")
+    time.sleep(random_between([1.5, 3.5]))
+    return driver
 
-for i in tqdm(range(len(author_config))):
-    category = author_config[i]['category']
-    author_id = author_config[i]['author_id']
-    author_name = author_config[i]['author_name']
-    # 进入个人主页
+
+def load_authors(authors_path: Path) -> List[Dict]:
+    with authors_path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def collect_for_author(
+    driver: webdriver.Edge,
+    author: Dict,
+    sleep_after_load: List[float],
+    scroll_min: int,
+    scroll_max: int,
+    max_videos: int,
+) -> List[Dict]:
+    author_id = author["author_id"]
+    category = author.get("category", "")
+
     driver.get(f"https://space.bilibili.com/{author_id}/upload/video")
-    
-    time.sleep(random.uniform(5.5, 10.5))
-    human_scroll(driver)
-    # 每个人保存最新的10个视频
-    for n in range(10): 
-        rank=n+1
-        url = driver.find_element(By.CSS_SELECTOR, f"#app > main > div.space-upload > div.upload-content > div > div.video-body > div > div:nth-child({rank}) > div > div > div > div > div.bili-video-card__cover > a").get_attribute("href").split("?", 1)[0]
-        title = driver.find_element(By.CSS_SELECTOR, f"#app > main > div.space-upload > div.upload-content > div > div.video-body > div > div:nth-child({rank}) > div > div > div > div > div.bili-video-card__details > div.bili-video-card__title > a").text
-        publish_date = driver.find_element(By.CSS_SELECTOR, f"#app > main > div.space-upload > div.upload-content > div > div.video-body > div > div:nth-child({rank}) > div > div > div > div > div.bili-video-card__details > div.bili-video-card__subtitle > span").text
-        author = driver.find_element(By.CSS_SELECTOR, f"#app > div.header.space-header > div.upinfo.header-upinfo > div.upinfo__main > div.upinfo-detail > div.upinfo-detail__top > div.nickname").text
-        rows.append({
-            "category": category,
-            "author": author,
-            "rank": rank,
-            "publish_date": publish_date,
-            "title": title,
-            "url": url
-        })
+    time.sleep(random_between(sleep_after_load))
+    human_scroll(driver, scroll_min, scroll_max)
 
-df = pd.DataFrame(rows)
-df.to_csv('video_ls.csv')
-df.to_csv('../web/video_ls.csv')
+    collected: List[Dict] = []
+    for rank in range(1, max_videos + 1):
+        try:
+            base = f"#app > main > div.space-upload > div.upload-content > div > div.video-body > div > div:nth-child({rank}) > div > div > div > div > div.bili-video-card"
+            url = (
+                driver.find_element(By.CSS_SELECTOR, f"{base}__cover > a")
+                .get_attribute("href")
+                .split("?", 1)[0]
+            )
+            title = driver.find_element(
+                By.CSS_SELECTOR, f"{base}__details > div.bili-video-card__title > a"
+            ).text
+            publish_date = driver.find_element(
+                By.CSS_SELECTOR, f"{base}__details > div.bili-video-card__subtitle > span"
+            ).text
+            author_name = driver.find_element(
+                By.CSS_SELECTOR,
+                "#app > div.header.space-header > div.upinfo.header-upinfo > div.upinfo__main > div.upinfo-detail > div.upinfo-detail__top > div.nickname",
+            ).text
+        except Exception:
+            break
 
-# # 筛选优质博主 # 改为前端逻辑
-# df = pd.read_csv('video_ls.csv')
-# condition_author = df['category'].isin(['超优质', '历史区', '创意区'])
-# condition_rank = df['rank'] <= 1
-# exhibit_col = ['author', 'title', 'url']
+        collected.append(
+            {
+                "category": category,
+                "author": author_name,
+                "rank": rank,
+                "publish_date": publish_date,
+                "title": title,
+                "url": url,
+            }
+        )
+        print(f"{author_name} - {title}")
+    return collected
 
-# df[condition_author & condition_rank][exhibit_col].to_csv('out_video_ls.csv')
+
+def write_outputs(rows: List[Dict], outputs: List[str]) -> None:
+    df = pd.DataFrame(rows)
+    for out in outputs:
+        target = (BASE_DIR / out).resolve()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(target, index=False)
+
+
+def main() -> None:
+    config = load_config()
+    authors_path = BASE_DIR / config["authors_file"]
+    authors = load_authors(authors_path)
+    driver = build_driver(
+        config.get("edge_options", []),
+        headless=config.get("headless", False),
+    )
+
+    rows: List[Dict] = []
+    try:
+        for author in tqdm(authors):
+            rows.extend(
+                collect_for_author(
+                    driver,
+                    author,
+                    sleep_after_load=config["sleep_after_load_seconds"],
+                    scroll_min=config["scroll_steps"]["min"],
+                    scroll_max=config["scroll_steps"]["max"],
+                    max_videos=config["max_videos_per_author"],
+                )
+            )
+    finally:
+        driver.quit()
+
+    write_outputs(rows, config["outputs"])
+
+
+if __name__ == "__main__":
+    main()
